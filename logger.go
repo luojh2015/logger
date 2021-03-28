@@ -28,7 +28,7 @@ type Logger struct {
 	level  *int
 	color  bool
 	prefix string
-	lock   sync.Mutex
+	lock   sync.RWMutex
 
 	storePrefix map[int]string
 	forks       []*Logger
@@ -59,15 +59,23 @@ func NewLogger(out io.Writer) *Logger {
 
 // LogCalldepth ...
 func (o *Logger) LogCalldepth(calldepth int, level int, msg ...interface{}) {
-	if level < *o.level || *o.level == LoggerLevel5Off {
-		return
-	}
+	prefix := func() string {
+		o.lock.RLock()
+		defer o.lock.RUnlock()
+		if level < *o.level || *o.level == LoggerLevel5Off {
+			return ""
+		}
 
-	if level > LoggerLevelNormal {
-		level = LoggerLevelNormal
-	}
+		if level > LoggerLevelNormal {
+			level = LoggerLevelNormal
+		}
 
-	o.l.Output(calldepth, o.storePrefix[level]+fmt.Sprint(msg...))
+		return o.storePrefix[level]
+	}()
+
+	if prefix != "" {
+		o.l.Output(calldepth, prefix+fmt.Sprint(msg...))
+	}
 }
 
 // SetColor Enable/Disable color
@@ -83,6 +91,8 @@ func (o *Logger) SetFlags(flag int) {
 
 // SetLevel ...
 func (o *Logger) SetLevel(level int) {
+	o.lock.Lock()
+	defer o.lock.Unlock()
 	*o.level = level
 }
 
